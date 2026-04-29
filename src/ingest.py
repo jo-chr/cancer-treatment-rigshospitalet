@@ -5,6 +5,7 @@ Usage:
 """
 from __future__ import annotations
 
+import re
 import shutil
 from datetime import datetime
 from pathlib import Path
@@ -25,22 +26,57 @@ CATEGORY_LABELS = {
     "paaroerende": "relatives",
 }
 
+# Danish month names -> month number, for parsing "Sidst opdateret: 24. juli 2024"
+_DA_MONTHS = {
+    "januar": 1, "februar": 2, "marts": 3, "april": 4, "maj": 5, "juni": 6,
+    "juli": 7, "august": 8, "september": 9, "oktober": 10, "november": 11,
+    "december": 12,
+}
+_LAST_UPDATED_RE = re.compile(
+    r"Sidst opdateret:\s*(\d{1,2})\.\s*([a-zæøå]+)\s*(\d{4})",
+    re.IGNORECASE,
+)
+
 
 def _read_pdf(path: Path) -> str:
     reader = pypdf.PdfReader(str(path))
     return "\n\n".join((p.extract_text() or "") for p in reader.pages)
 
 
-def _doc_metadata(path: Path) -> dict:
+def _parse_last_updated(text: str) -> datetime | None:
+    """Parse the 'Sidst opdateret: 24. juli 2024' footer used on Rigshospitalet PDFs."""
+    m = _LAST_UPDATED_RE.search(text)
+    if not m:
+        return None
+    day, month_name, year = m.group(1), m.group(2).lower(), m.group(3)
+    month = _DA_MONTHS.get(month_name)
+    if not month:
+        return None
+    try:
+        return datetime(int(year), month, int(day))
+    except ValueError:
+        return None
+
+
+def _doc_metadata(path: Path, text: str) -> dict:
     rel = path.relative_to(settings.docs_dir)
     category_folder = rel.parts[0]
-    mtime = datetime.fromtimestamp(path.stat().st_mtime)
+
+    last_updated = _parse_last_updated(text)
+    if last_updated is None:
+        # Fall back to file mtime if the PDF has no 'Sidst opdateret' line.
+        last_updated = datetime.fromtimestamp(path.stat().st_mtime)
+        date_source = "file_mtime"
+    else:
+        date_source = "pdf_footer"
+
     return {
         "source_file": path.name,
         "source_path": str(rel).replace("\\", "/"),
         "category": CATEGORY_LABELS.get(category_folder, category_folder),
-        "last_modified": mtime.strftime("%Y-%m-%d"),
-        "last_modified_ts": int(mtime.timestamp()),
+        "last_modified": last_updated.strftime("%Y-%m-%d"),
+        "last_modified_ts": int(last_updated.timestamp()),
+        "date_source": date_source,
     }
 
 
@@ -51,8 +87,13 @@ def load_documents() -> list[Document]:
         if not text:
             print(f"  ! empty: {pdf_path.name}")
             continue
-        docs.append(Document(page_content=text, metadata=_doc_metadata(pdf_path)))
-        print(f"  + {pdf_path.relative_to(settings.docs_dir)}  ({len(text)} chars)")
+        meta = _doc_metadata(pdf_path, text)
+        docs.append(Document(page_content=text, metadata=meta))
+        print(
+            f"  + {pdf_path.relative_to(settings.docs_dir)}  "
+            f"({len(text)} chars, updated {meta['last_modified']} "
+            f"[{meta['date_source']}])"
+        )
     return docs
 
 
