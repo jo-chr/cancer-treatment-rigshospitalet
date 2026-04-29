@@ -15,13 +15,13 @@ src/
   guards.py                 # Intent classifier + output safety judge
   graph.py                  # LangGraph state machine (the agent)
   api.py                    # FastAPI surface
-  cli.py                    # Interactive CLI for the live demo
+  cli.py                    # Interactive CLI
 eval/
   questions.yaml            # 12 hand-crafted test cases
   run.py                    # Scorecard: intent / refusal / citation accuracy
 ```
 
-## Architecture (1-minute version)
+## Architecture
 
 ```
 user ──► classify_intent ──┬─ medical    ─► refuse (1813)
@@ -64,29 +64,3 @@ uvicorn src.api:app --reload
 # 6. run the eval
 python -m eval.run
 ```
-
-## Design choices
-
-| Choice | Why |
-|---|---|
-| RAG, not fine-tuning | Docs change, traceability is mandatory, citations are non-negotiable. |
-| LangGraph over plain chains | Explicit, auditable state machine — easy to show the Chief Surgeon where the medical-advice guard sits. |
-| Chroma + local files | Live demo runs on a laptop, zero infra. |
-| GPT-4o-mini default | Cheap, fast, multilingual. Swap for Azure OpenAI EU for production GDPR. |
-| Two-layer guardrails | Input classifier is cheap and catches 95%; output judge catches drift. |
-
-## Path to production
-
-- **Hosting**: Azure OpenAI in EU region; Rigshospitalet AD-integrated.
-- **PII**: Presidio-style scrubbing pre-LLM; no raw inputs in logs.
-- **Governance**: weekly nurse review of flagged conversations; versioned
-  prompts; eval suite gating every release in CI.
-- **Rollout**: pilot on thyroid (35 pts/mo) → measure deflection &
-  cancellation rate → expand ENT → hospital-wide.
-- **Equity v2**: reading-level simplification + English / Arabic / Turkish.
-
-## Limitations
-
-- Only the 19 PDFs in `hospital_documents/` are knowledge.
-- Output guardrail uses an LLM judge — adds latency; could be replaced by
-  a fine-tuned classifier in production.
