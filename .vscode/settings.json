@@ -1,0 +1,12 @@
+{
+  "python.analysis.diagnosticSeverityOverrides": {
+    "reportMissingImports": "none",
+    "reportOptionalMemberAccess": "none",
+    "reportUndefinedVariable": "none",
+    "reportOptionalSubscript": "none",
+    "reportArgumentType": "none",
+    "reportOptionalCall": "none",
+    "reportReturnType": "none",
+    "reportTypedDictNotRequiredAccess": "none"
+  }
+}
